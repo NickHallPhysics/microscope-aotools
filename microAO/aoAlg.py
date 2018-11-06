@@ -361,29 +361,30 @@ class AdaptiveOpticsFunctions():
         metric = np.sqrt(np.mean(fftarray_ring_sq[fftarray_ring_sq != 0]))
         return metric
 
-    def find_zernike_amp_sensorless(self,image_stack, zernike_amplitudes):
-        metric_measurements = np.zeros(np.shape(image_stack[0]))
+    def find_zernike_amp_sensorless(self,image_stack, b):
+        try:
+            assert image_stack.shape[0] == 3
+        except:
+            raise Exception("Data Error: Expected 3 images, instead got %i." %image_stack.shape[0])
 
-        for ii in range(np.shape(metric_measurements)):
-            metric_measurements[ii] = self.fourier_metric(image_stack[ii,:,:])
 
-        a_2, a_1, a_0 = np.polyfit(zernike_amplitudes, metric_measurements, 2)
+        g_0 = self.fourier_metric(image_stack[0,:,:])
+        g_neg = self.fourier_metric(image_stack[1, :, :])
+        g_pos = self.fourier_metric(image_stack[2, :, :])
 
-        x = sympy.Symbol('x', real=True)
-        metric_function = (a_2 * (x ** 2)) + (a_1 * x) + a_0
-        metric_function_dx = metric_function.diff(x)
+        G_0 = 1,0 / g_0
+        G_neg = 1.0 / g_neg
+        G_pos = 1.0 / g_pos
 
-        amplitude_present = sympy.solve(metric_function_dx, x)
-        return amplitude_present
+        a_corr = (b*(G_pos - G_neg)) / (2*G_pos - 4*G_0 + 2*G_neg)
+        return a_corr
 
-    def get_zernike_modes_sensorless(self, full_image_stack, full_zernike_applied, noZernike, nollZernike):
-        numMes = full_zernike_applied.shape[0]/noZernike
-
-        coef = np.zeros(full_zernike_applied.shape[1])
+    def get_zernike_modes_sensorless(self, full_image_stack, b, noZernike, noZernikeApplied, nollIndex):
+        coef = np.zeros(noZernike)
+        image_stack = np.zeros(3, full_image_stack.shape[1], full_image_stack.shape[2])
+        image_stack[0,:,:] = full_image_stack[0,:,:]
         for ii in range(noZernike):
-            image_stack = full_image_stack[ii * numMes:(ii + 1) * numMes,:,:]
-            zernike_applied = full_zernike_applied[ii * numMes:(ii + 1) * numMes,nollZernike[ii]]
-            amp = self.find_zernike_amp_sensorless(image_stack,zernike_applied)
-            coef[nollZernike[ii]] = amp
-
+            image_stack[1:,:,:] = full_image_stack[ii * 2:(ii + 1) * 2,:,:]
+            amp = self.find_zernike_amp_sensorless(image_stack,b)
+            coef[nollIndex[ii]] = amp
         return coef
