@@ -23,13 +23,43 @@ import numpy as np
 import Pyro4
 import time
 from microAO.aoAlg import AdaptiveOpticsFunctions
+from microscope.devices import Device
+from microscope.devices import TriggerType
+from microscope.devices import TriggerMode
 
 # Should fix this with multiple inheritance for this class!
 aoAlg = AdaptiveOpticsFunctions()
 
-from microscope.devices import Device
-from microscope.devices import TriggerType
-from microscope.devices import TriggerMode
+
+def generate_pattern_image(shape, dist, wavelength, NA, pixel_size):
+    ray_crit_dist = (1.22 * wavelength) / (2 * NA)
+    ray_crit_freq = 1 / ray_crit_dist
+    max_freq = 1 / (2 * pixel_size)
+    freq_ratio = ray_crit_freq / max_freq
+    OTF_outer_rad = freq_ratio * (shape / 2)
+
+    try:
+        assert (shape % 2) == 1
+    except:
+        shape = shape - 1
+
+    pattern_ft = np.zeros((shape,shape))
+
+    f1 = (shape-1)//2
+    f2 = f1 - np.round(0.5*OTF_outer_rad*dist)
+    f3 = f1 + np.round(0.5*OTF_outer_rad*dist)
+    f4 = f1 - np.round(OTF_outer_rad*dist)
+    f5 = f1 + np.round(OTF_outer_rad*dist)
+    freq_loc_half = (np.asarray([f2, f2, f3, f3], dtype="int64"),
+                np.asarray([f2, f3, f2, f3], dtype="int64"))
+    freq_loc_quart = (np.asarray([f1, f1, f4, f5], dtype="int64"),
+                     np.asarray([f4, f5, f1, f1], dtype="int64"))
+    pattern_ft[f1,f1] = 1
+    pattern_ft[freq_loc_half] = 1/2
+    pattern_ft[freq_loc_quart] = 1/4
+
+    pattern = abs(np.fft.fft2(np.fft.ifftshift(pattern_ft))).astype("uint8")
+    return pattern
 
 
 class AdaptiveOpticsDevice(Device):
@@ -112,6 +142,17 @@ class AdaptiveOpticsDevice(Device):
         self.wavefront_camera.disable()
 
     @Pyro4.expose
+    def enable_slm(self):
+        self.slm.run()
+
+    @Pyro4.expose
+    def disable_slm(self):
+        self.slm.stop()
+
+    def get_is_slm_enabled(self):
+        self.slm.get_is_enabled()
+
+    @Pyro4.expose
     def set_trigger(self, cp_ttype, cp_tmode):
         ttype = self._CockpitTriggerType_to_TriggerType[cp_ttype]
         tmode = self._CockpitTriggerModes_to_TriggerModes[cp_tmode]
@@ -147,6 +188,12 @@ class AdaptiveOpticsDevice(Device):
     @Pyro4.expose
     def get_pupil_ac(self):
         return self.pupil_ac
+
+    @Pyro4.expose
+    def apply_isosense_pattern(self, wavelength, NA=1.1, pixel_size=0.1193 * 10 ** -6):
+        shape = self.slm.get_shape()
+        pattern = generate_pattern_image(shape, 0.5, wavelength, NA, pixel_size)
+        self.slm.set_custom_sequence(wavelength,[pattern,pattern])
 
     @Pyro4.expose
     def send(self, values):
