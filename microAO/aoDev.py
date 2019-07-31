@@ -149,6 +149,7 @@ class AdaptiveOpticsDevice(Device):
     def disable_slm(self):
         self.slm.stop()
 
+    @Pyro4.expose
     def get_is_slm_enabled(self):
         self.slm.get_is_enabled()
 
