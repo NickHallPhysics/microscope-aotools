@@ -32,29 +32,40 @@ aoAlg = AdaptiveOpticsFunctions()
 
 
 def generate_pattern_image(shape, dist, wavelength, NA, pixel_size):
+    try:
+        assert type(shape) is tuple
+    except:
+        raise Exception("Expected %s instead recieved %s" %(type((512,512)),type(shape)))
+
+    try:
+        assert len(shape) == 2
+    except:
+        raise Exception("Expected tuple of length 2, instead recieved length %i" % len(shape))
+
     ray_crit_dist = (1.22 * wavelength) / (2 * NA)
     ray_crit_freq = 1 / ray_crit_dist
     max_freq = 1 / (2 * pixel_size)
     freq_ratio = ray_crit_freq / max_freq
-    OTF_outer_rad = freq_ratio * (shape / 2)
+    OTF_outer_radx = freq_ratio * (shape[1] / 2)
+    OTF_outer_rady = freq_ratio * (shape[0] / 2)
 
-    try:
-        assert (shape % 2) == 1
-    except:
-        shape = shape - 1
+    pattern_ft = np.zeros(shape)
 
-    pattern_ft = np.zeros((shape,shape))
-
-    f1 = (shape-1)//2
-    f2 = f1 - np.round(0.5*OTF_outer_rad*dist)
-    f3 = f1 + np.round(0.5*OTF_outer_rad*dist)
-    f4 = f1 - np.round(OTF_outer_rad*dist)
-    f5 = f1 + np.round(OTF_outer_rad*dist)
-    freq_loc_half = (np.asarray([f2, f2, f3, f3], dtype="int64"),
-                np.asarray([f2, f3, f2, f3], dtype="int64"))
-    freq_loc_quart = (np.asarray([f1, f1, f4, f5], dtype="int64"),
-                     np.asarray([f4, f5, f1, f1], dtype="int64"))
-    pattern_ft[f1,f1] = 1
+    f1x = shape[1]//2
+    f1y = shape[0]//2
+    f2x = f1x - np.round(0.5*OTF_outer_radx * dist)
+    f2y = f1y - np.round(0.5 * OTF_outer_rady * dist)
+    f3x = f1x + np.round(0.5*OTF_outer_radx * dist)
+    f3y = f1y + np.round(0.5 * OTF_outer_rady * dist)
+    f4x = f1x - np.round(OTF_outer_radx * dist)
+    f4y = f1y - np.round(OTF_outer_rady * dist)
+    f5x = f1x + np.round(OTF_outer_radx * dist)
+    f5y = f1y + np.round(OTF_outer_rady * dist)
+    freq_loc_half = (np.asarray([f2y, f2y, f3y, f3y], dtype="int64"),
+                np.asarray([f2x, f3x, f2x, f3x], dtype="int64"))
+    freq_loc_quart = (np.asarray([f1y, f1y, f4y, f5y], dtype="int64"),
+                     np.asarray([f4x, f5x, f1x, f1x], dtype="int64"))
+    pattern_ft[f1y,f1x] = 1
     pattern_ft[freq_loc_half] = 1/2
     pattern_ft[freq_loc_quart] = 1/4
 
