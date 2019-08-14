@@ -69,7 +69,9 @@ def generate_pattern_image(shape, dist, wavelength, NA, pixel_size):
     pattern_ft[freq_loc_half] = 1/2
     pattern_ft[freq_loc_quart] = 1/4
 
-    pattern = abs(np.fft.fft2(np.fft.ifftshift(pattern_ft))).astype("uint8")
+    pattern_unscaled = abs(np.fft.fft2(np.fft.ifftshift(pattern_ft)))
+    pattern = (pattern_unscaled/np.max(pattern_unscaled))*((2**16)-1)
+    pattern = pattern.astype("uint16")
     return pattern
 
 
@@ -202,9 +204,9 @@ class AdaptiveOpticsDevice(Device):
         return self.pupil_ac
 
     @Pyro4.expose
-    def apply_isosense_pattern(self, wavelength, NA=1.1, pixel_size=0.1193 * 10 ** -6):
+    def apply_isosense_pattern(self, dist, wavelength, NA=1.1, pixel_size=0.1193 * 10 ** -6):
         shape = self.slm.get_shape()
-        pattern = generate_pattern_image(shape, 0.5, wavelength, NA, pixel_size)
+        pattern = generate_pattern_image(shape, dist, wavelength, NA, pixel_size)
         self.slm.set_custom_sequence(wavelength,[pattern,pattern])
 
     @Pyro4.expose
