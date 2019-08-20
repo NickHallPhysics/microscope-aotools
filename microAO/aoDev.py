@@ -210,6 +210,16 @@ class AdaptiveOpticsDevice(Device):
         self.slm.set_custom_sequence(wavelength,[pattern,pattern])
 
     @Pyro4.expose
+    def set_metric(self,metric):
+        aoAlg.set_metric(metric)
+
+    @Pyro4.expose
+    def get_metric(self):
+        metric = aoAlg.get_metric()
+        self._logger.info("Current image quality metric is: %s" %metric)
+        return metric
+
+    @Pyro4.expose
     def send(self, values):
         self._logger.info("Sending pattern to DM")
 
