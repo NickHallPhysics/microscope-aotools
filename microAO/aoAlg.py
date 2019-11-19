@@ -33,6 +33,9 @@ import microAO.aoMetrics as metrics
 def gaussian_funcion(x, a, b, c, d):
     return a + (b - a) * np.exp((-(x - c) ** 2) / (2 * d ** 2))
 
+def quadratic_function(x, a, b ,c):
+    return (a*(x**2)) + (b*x) + c
+
 metric_function = {
     'fourier': metrics.measure_fourier_metric,
     'contrast': metrics.measure_contrast_metric,
@@ -339,11 +342,13 @@ class AdaptiveOpticsFunctions():
 
         print("Fitting metric polynomial")
         try:
-            [offset, normalising, mean, std_dev], pcov = curve_fit(gaussian_funcion, zernike_amplitudes, metrics_measured)
+            [a, b, c], pcov = curve_fit(quadratic_function, zernike_amplitudes, metrics_measured)
             print("Calculating amplitude present")
-            if (normalising - offset) < 0:
+            if a < 0:
                 print("Fitting converged on minima. Defaulting to 0 amplitude.")
                 mean = 0
+            else:
+                mean = b/(2*a)
         except RuntimeError:
             max_from_mean_var = (np.max(metrics_measured) - np.min(metrics_measured))/np.mean(metrics_measured)
             if max_from_mean_var >= 0.1:
