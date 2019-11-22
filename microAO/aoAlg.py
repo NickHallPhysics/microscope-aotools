@@ -342,13 +342,10 @@ class AdaptiveOpticsFunctions():
 
         print("Fitting metric polynomial")
         try:
-            [a, b, c], pcov = curve_fit(quadratic_function, zernike_amplitudes, metrics_measured)
+            [a, b, c], pcov = curve_fit(quadratic_function, zernike_amplitudes, metrics_measured,
+                                        bounds=([0, np.NINF, np.NINF], [np.Inf, np.Inf, np.Inf]))
             print("Calculating amplitude present")
-            if a < 0:
-                print("Fitting converged on minima. Defaulting to 0 amplitude.")
-                mean = 0
-            else:
-                mean = b/(2*a)
+            mean = b/(2*a)
         except RuntimeError:
             max_from_mean_var = (np.max(metrics_measured) - np.min(metrics_measured))/np.mean(metrics_measured)
             if max_from_mean_var >= 0.1:
