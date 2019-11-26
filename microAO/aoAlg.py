@@ -51,7 +51,7 @@ class AdaptiveOpticsFunctions():
         self.fft_filter = None
         self.controlMatrix = None
         self.OTF_ring_mask = None
-        self.metric = 'contrast'
+        self.metric = 'fourier_power'
 
     def set_mask(self,mask):
         self.mask = mask
@@ -341,8 +341,8 @@ class AdaptiveOpticsFunctions():
         print("Metrics measured")
 
         print("Fitting metric polynomial")
-        z_l_bound = np.min(zernike_amplitudes) - (0.25*(np.max(zernike_amplitudes) - np.min(zernike_amplitudes)))
-        z_u_bound = np.min(zernike_amplitudes) + (0.25*(np.max(zernike_amplitudes) - np.min(zernike_amplitudes)))
+        z_l_bound = np.min(zernike_amplitudes)# - (0.25*(np.max(zernike_amplitudes) - np.min(zernike_amplitudes)))
+        z_u_bound = np.max(zernike_amplitudes)# + (0.25*(np.max(zernike_amplitudes) - np.min(zernike_amplitudes)))
         try:
             [a, mean, c], pcov = curve_fit(quadratic_function, zernike_amplitudes, metrics_measured,
                                            bounds=([0, z_l_bound, np.NINF], [np.Inf, z_u_bound, np.Inf]))

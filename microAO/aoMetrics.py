@@ -56,7 +56,7 @@ def measure_fourier_metric(image, wavelength=500 * 10 ** -9, NA=1.1,
             fftarray_sq_log[0:noise_corner_size, -noise_corner_size:] +
             fftarray_sq_log[-noise_corner_size:, 0:noise_corner_size] +
             fftarray_sq_log[-noise_corner_size:, -noise_corner_size:]) / 4
-    threshold = np.mean(noise) * 1.125
+    threshold = np.mean(noise) * 1.1
 
     ring_mask = make_ring_mask(np.shape(image),0.1 * OTF_outer_rad, OTF_outer_rad)
     freq_above_noise = (fftarray_sq_log > threshold) * ring_mask
@@ -108,7 +108,7 @@ def measure_fourier_power_metric(image, wavelength=500 * 10 ** -9, NA=1.1,
             fftarray_sq_log[0:noise_corner_size, -noise_corner_size:] +
             fftarray_sq_log[-noise_corner_size:, 0:noise_corner_size] +
             fftarray_sq_log[-noise_corner_size:, -noise_corner_size:]) / 4
-    threshold = np.mean(noise) * 1.125
+    threshold = np.mean(noise) * 1.1
 
     ring_mask = make_ring_mask(np.shape(image),0.1 * OTF_outer_rad, OTF_outer_rad)
     ramp_mask = np.sqrt(np.outer(np.linspace(-150,150,image.shape[0])**2,np.ones(image.shape[1]).T)+
