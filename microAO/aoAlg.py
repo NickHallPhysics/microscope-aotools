@@ -352,7 +352,6 @@ class AdaptiveOpticsFunctions():
                 print(print_message)
                 mean = 0
             else:
-                mean = b/(2*a)
                 print_message = "Amplitude calculated successfully"
         except RuntimeError:
             max_from_mean_var = (np.max(metrics_measured) - np.min(metrics_measured))/np.mean(metrics_measured)
