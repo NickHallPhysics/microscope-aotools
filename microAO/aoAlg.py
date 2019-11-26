@@ -345,7 +345,7 @@ class AdaptiveOpticsFunctions():
         z_u_bound = np.max(zernike_amplitudes)# + (0.25*(np.max(zernike_amplitudes) - np.min(zernike_amplitudes)))
         try:
             [a, mean, c], pcov = curve_fit(quadratic_function, zernike_amplitudes, metrics_measured,
-                                           bounds=([0, z_l_bound, np.NINF], [np.Inf, z_u_bound, np.Inf]))
+                                           bounds=([np.NINF, z_l_bound, np.NINF], [0, z_u_bound, np.Inf]))
             print("Calculating amplitude present")
             if a < 0:
                 print_message = "Fitting converged on minima. Defaulting to 0 amplitude."
