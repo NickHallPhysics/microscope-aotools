@@ -51,7 +51,7 @@ class AdaptiveOpticsFunctions():
         self.fft_filter = None
         self.controlMatrix = None
         self.OTF_ring_mask = None
-        self.metric = 'fourier'
+        self.metric = 'contrast'
 
     def set_mask(self,mask):
         self.mask = mask
@@ -345,22 +345,26 @@ class AdaptiveOpticsFunctions():
             [a, b, c], pcov = curve_fit(quadratic_function, zernike_amplitudes, metrics_measured)
             print("Calculating amplitude present")
             if a < 0:
-                print("Fitting converged on minima. Defaulting to 0 amplitude.")
+                print_message = "Fitting converged on minima. Defaulting to 0 amplitude."
+                print(print_message)
                 mean = 0
             else:
                 mean = b/(2*a)
+                print_message = "Amplitude calculated successfully"
         except RuntimeError:
             max_from_mean_var = (np.max(metrics_measured) - np.min(metrics_measured))/np.mean(metrics_measured)
             if max_from_mean_var >= 0.1:
-                print("Could not accurately fit metric polynomial. Using maximum metric amplitude")
+                print_message = "Could not accurately fit metric polynomial. Using maximum metric amplitude"
+                print(print_message)
                 mean = zernike_amplitudes[metrics_measured==np.max(metrics_measured)]
             else:
-                print("Could not accurately fit metric polynomial. Defaulting to 0 amplitude.")
+                print_message = "Could not accurately fit metric polynomial. Defaulting to 0 amplitude."
+                print(print_message)
                 mean = 0
 
         amplitude_present = -1.0 * mean
         print("Amplitude calculated = %f" % amplitude_present)
-        return amplitude_present
+        return amplitude_present, print_message
 
     def get_zernike_modes_sensorless(self, full_image_stack, full_zernike_applied, nollZernike,
                                      wavelength=500 * 10 ** -9, NA=1.1, pixel_size=0.1193 * 10 ** -6):
