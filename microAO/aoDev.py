@@ -23,6 +23,7 @@ import numpy as np
 import Pyro4
 import time
 from microAO.aoAlg import AdaptiveOpticsFunctions
+import logging
 
 # Should fix this with multiple inheritance for this class!
 aoAlg = AdaptiveOpticsFunctions()
@@ -31,6 +32,7 @@ from microscope.devices import Device
 from microscope.devices import TriggerType
 from microscope.devices import TriggerMode
 
+_logger = logging.getLogger(__name__)
 
 class AdaptiveOpticsDevice(Device):
     """Class for the adaptive optics device
@@ -154,7 +156,7 @@ class AdaptiveOpticsDevice(Device):
     @Pyro4.expose
     def get_metric(self):
         metric = aoAlg.get_metric()
-        self._logger.info("Current image quality metric is: %s" %metric)
+        _logger.info("Current image quality metric is: %s" %metric)
         return metric
 
     @Pyro4.expose
@@ -167,7 +169,7 @@ class AdaptiveOpticsDevice(Device):
 
     @Pyro4.expose
     def send(self, values):
-        self._logger.info("Sending pattern to DM")
+        _logger.info("Sending pattern to DM")
 
         ttype, tmode = self.get_trigger()
         if ttype is not "SOFTWARE":
@@ -192,7 +194,7 @@ class AdaptiveOpticsDevice(Device):
 
     @Pyro4.expose
     def queue_patterns(self, patterns):
-        self._logger.info("Queuing patterns on DM")
+        _logger.info("Queuing patterns on DM")
 
         ttype, tmode = self.get_trigger()
         if ttype is not "RISING_EDGE":
@@ -264,7 +266,7 @@ class AdaptiveOpticsDevice(Device):
 
     @Pyro4.expose
     def reset(self):
-        self._logger.info("Resetting DM")
+        _logger.info("Resetting DM")
         last_ac = np.copy(self.last_actuator_values)
         self.send(np.zeros(self.numActuators) + 0.5)
         self.last_actuator_values = last_ac
@@ -283,11 +285,11 @@ class AdaptiveOpticsDevice(Device):
                 self.acquiring = False
             except Exception as e:
                 if str(e) == str("ERROR 10: Timeout"):
-                    self._logger.info("Recieved Timeout error from camera. Waiting to try again...")
+                    _logger.info("Recieved Timeout error from camera. Waiting to try again...")
                     time.sleep(1)
                 else:
-                    self._logger.info(type(e))
-                    self._logger.info("Error is: %s" % (e))
+                    _logger.info(type(e))
+                    _logger.info("Error is: %s" % (e))
                     raise e
         return data_raw
 
@@ -300,11 +302,11 @@ class AdaptiveOpticsDevice(Device):
                 self.acquiring = False
             except Exception as e:
                 if str(e) == str("ERROR 10: Timeout"):
-                    self._logger.info("Recieved Timeout error from camera. Waiting to try again...")
+                    _logger.info("Recieved Timeout error from camera. Waiting to try again...")
                     time.sleep(1)
                 else:
-                    self._logger.info(type(e))
-                    self._logger.info("Error is: %s" % (e))
+                    _logger.info(type(e))
+                    _logger.info("Error is: %s" % (e))
                     raise e
         if np.any(self.roi) is None:
             data = data_raw
@@ -330,7 +332,7 @@ class AdaptiveOpticsDevice(Device):
         try:
             self.fft_filter = aoAlg.make_fft_filter(test_image, region=region)
         except Exception as e:
-            self._logger.info(e)
+            _logger.info(e)
         return self.fft_filter
 
     @Pyro4.expose
@@ -423,12 +425,12 @@ class AdaptiveOpticsDevice(Device):
                     diff_image = abs(np.diff(np.diff(image_unwrap, axis=1), axis=0)) * edge_mask[:-1, :-1]
                     no_discontinuities = np.shape(np.where(diff_image > 2 * np.pi))[1]
                     if no_discontinuities > (x * y) / 1000.0:
-                        self._logger.info("Unwrap image %d/%d contained discontinuites" % (curr_calc, noImages))
-                        self._logger.info("Zernike modes %d/%d not calculated" % (curr_calc, noImages))
+                        _logger.info("Unwrap image %d/%d contained discontinuites" % (curr_calc, noImages))
+                        _logger.info("Zernike modes %d/%d not calculated" % (curr_calc, noImages))
                     else:
                         pokeAc[ac] = pokeSteps[im]
                         all_pokeAmps.append(pokeAc.tolist())
-                        self._logger.info("Calculating Zernike modes %d/%d..." % (curr_calc, noImages))
+                        _logger.info("Calculating Zernike modes %d/%d..." % (curr_calc, noImages))
 
                     curr_amps = aoAlg.get_zernike_modes(image_unwrap, noZernikeModes)
                     zernikeModeAmp_list.append(curr_amps)
@@ -439,13 +441,13 @@ class AdaptiveOpticsDevice(Device):
         all_zernikeModeAmp = np.asarray(all_zernikeModeAmp)
         all_pokeAmps = np.asarray(all_pokeAmps)
 
-        self._logger.info("Computing Control Matrix")
+        _logger.info("Computing Control Matrix")
         self.controlMatrix = aoAlg.create_control_matrix(zernikeAmps=all_zernikeModeAmp,
                                                          pokeSteps=all_pokeAmps,
                                                          numActuators=self.numActuators,
                                                          pupil_ac=self.pupil_ac,
                                                          threshold=threshold)
-        self._logger.info("Control Matrix computed")
+        _logger.info("Control Matrix computed")
         return self.controlMatrix
 
     @Pyro4.expose
@@ -468,7 +470,7 @@ class AdaptiveOpticsDevice(Device):
 
         interferogram = self.acquire()
         interferogram_unwrap = self.phaseunwrap(interferogram)
-        self._logger.info("Phase unwrapped ")
+        _logger.info("Phase unwrapped ")
         return interferogram, interferogram_unwrap
 
     @Pyro4.expose
@@ -506,13 +508,13 @@ class AdaptiveOpticsDevice(Device):
 
         # Ensure the filters has been constructed
         if np.any(self.mask) is None:
-            self._logger.info("Constructing mask")
+            _logger.info("Constructing mask")
             self.mask = self.make_mask(self.roi[2])
         else:
             pass
 
         if np.any(self.fft_filter) is None:
-            self._logger.info("Constructing Fourier filter")
+            _logger.info("Constructing Fourier filter")
             self.fft_filter = self.set_fourierfilter(test_image[:, :])
         else:
             pass
@@ -550,11 +552,11 @@ class AdaptiveOpticsDevice(Device):
                     try:
                         self.send(actuator_values[(curr_calc - 1), :])
                     except:
-                        self._logger.info("Actuator values being sent:")
-                        self._logger.info(actuator_values[(curr_calc - 1), :])
-                        self._logger.info("Shape of actuator vector:")
-                        self._logger.info(np.shape(actuator_values[(curr_calc - 1), :]))
-                    self._logger.info("Frame %i/%i captured" % (curr_calc, noImages))
+                        _logger.info("Actuator values being sent:")
+                        _logger.info(actuator_values[(curr_calc - 1), :])
+                        _logger.info("Shape of actuator vector:")
+                        _logger.info(np.shape(actuator_values[(curr_calc - 1), :]))
+                    _logger.info("Frame %i/%i captured" % (curr_calc, noImages))
 
                     # Acquire the current poke image
                     poke_image = self.acquire()
@@ -568,12 +570,12 @@ class AdaptiveOpticsDevice(Device):
                     diff_image = abs(np.diff(np.diff(image_unwrap, axis=1), axis=0)) * edge_mask[:-1, :-1]
                     no_discontinuities = np.shape(np.where(diff_image > 2 * np.pi))[1]
                     if no_discontinuities > (x * y) / 1000.0:
-                        self._logger.info("Unwrap image %d/%d contained discontinuites" % (curr_calc, noImages))
-                        self._logger.info("Zernike modes %d/%d not calculated" % (curr_calc, noImages))
+                        _logger.info("Unwrap image %d/%d contained discontinuites" % (curr_calc, noImages))
+                        _logger.info("Zernike modes %d/%d not calculated" % (curr_calc, noImages))
                     else:
                         pokeAc[ac] = pokeSteps[im]
                         all_pokeAmps.append(pokeAc.tolist())
-                        self._logger.info("Calculating Zernike modes %d/%d..." % (curr_calc, noImages))
+                        _logger.info("Calculating Zernike modes %d/%d..." % (curr_calc, noImages))
 
                     curr_amps = aoAlg.get_zernike_modes(image_unwrap, noZernikeModes)
                     zernikeModeAmp_list.append(curr_amps)
@@ -589,13 +591,13 @@ class AdaptiveOpticsDevice(Device):
         np.save("all_pokeAmps", all_pokeAmps)
         self.reset()
 
-        self._logger.info("Computing Control Matrix")
+        _logger.info("Computing Control Matrix")
         self.controlMatrix = aoAlg.create_control_matrix(zernikeAmps=all_zernikeModeAmp,
                                                          pokeSteps=all_pokeAmps,
                                                          numActuators=self.numActuators,
                                                          pupil_ac=self.pupil_ac,
                                                          threshold=threshold)
-        self._logger.info("Control Matrix computed")
+        _logger.info("Control Matrix computed")
         np.save("control_matrix", self.controlMatrix)
 
         # Obtain actuator positions to correct for system aberrations
@@ -645,7 +647,7 @@ class AdaptiveOpticsDevice(Device):
         true_flat = np.zeros(np.shape(interferogram_unwrap))
         best_rms_error = np.sqrt(np.mean((true_flat - interferogram_unwrap) ** 2))
         for ii in range(iterations):
-            self._logger.info("Correction iteration %i/%i" % (ii + 1, iterations))
+            _logger.info("Correction iteration %i/%i" % (ii + 1, iterations))
             interferogram = self.acquire()
             interferogram_unwrap = self.phaseunwrap(interferogram)
             edge_mask = np.sqrt(
@@ -658,17 +660,17 @@ class AdaptiveOpticsDevice(Device):
             z_amps = z_amps * z_modes_ignore
             flat_actuators = self.set_phase((-1.0 * z_amps), offset=best_flat_actuators)
             rms_error = np.sqrt(np.mean((true_flat - interferogram_unwrap) ** 2))
-            self._logger.info("Current RMS error is %.5f. Best is %.5f" % (rms_error, best_rms_error))
+            _logger.info("Current RMS error is %.5f. Best is %.5f" % (rms_error, best_rms_error))
             if rms_error < best_rms_error:
                 if no_discontinuities > (x * y) / 1000.0:
-                    self._logger.info("Too many discontinuities in wavefront unwrap")
+                    _logger.info("Too many discontinuities in wavefront unwrap")
                 else:
                     best_flat_actuators = np.copy(flat_actuators)
                     best_rms_error = np.copy(rms_error)
             elif rms_error > best_rms_error:
-                self._logger.info("RMS wavefront error worse than before")
+                _logger.info("RMS wavefront error worse than before")
             else:
-                self._logger.info("No improvement in RMS wavefront error")
+                _logger.info("No improvement in RMS wavefront error")
         self.send(best_flat_actuators)
         return best_flat_actuators
 
@@ -677,7 +679,7 @@ class AdaptiveOpticsDevice(Device):
         try:
             actuator_pos = aoAlg.ac_pos_from_zernike(applied_z_modes, self.numActuators)
         except Exception as err:
-            self._logger.info(err)
+            _logger.info(err)
             raise err
         if np.any(offset) is None:
             actuator_pos += 0.5
@@ -707,9 +709,9 @@ class AdaptiveOpticsDevice(Device):
             z_modes_ac0 = self.measure_zernike(modes_tba)
             applied_z_modes[ii] = 1
             self.set_phase(applied_z_modes)
-            self._logger.info("Appling Zernike mode %i/%i" % (ii+1, modes_tba))
+            _logger.info("Appling Zernike mode %i/%i" % (ii+1, modes_tba))
             acquired_z_modes = self.measure_zernike(modes_tba)
-            self._logger.info("Measured phase")
+            _logger.info("Measured phase")
             assay[:, ii] = acquired_z_modes - z_modes_ac0
             applied_z_modes[ii] = 0.0
         self.reset()
@@ -727,10 +729,10 @@ class AdaptiveOpticsDevice(Device):
         amp_to_correct = aoAlg.find_zernike_amp_sensorless(image_stack, zernike_applied, wavelength=wavelength, NA=NA,
                                                            pixel_size=pixel_size)
         if abs(amp_to_correct) <= 1.5 * (np.max(zernike_applied)-np.min(zernike_applied)):
-            self._logger.info("Amplitude calculated = %f" % amp_to_correct)
+            _logger.info("Amplitude calculated = %f" % amp_to_correct)
         else:
-            self._logger.info("Amplitude calculated = %f" % amp_to_correct)
-            self._logger.info("Amplitude magnitude too large. Defaulting to 0.")
+            _logger.info("Amplitude calculated = %f" % amp_to_correct)
+            _logger.info("Amplitude magnitude too large. Defaulting to 0.")
             amp_to_correct = 0
         z_amps[nollIndex - 1] = -1.0 * amp_to_correct
         if np.any(offset) == None:
