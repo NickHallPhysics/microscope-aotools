@@ -754,10 +754,13 @@ class AdaptiveOpticsDevice(Device):
                 else:
                     best_flat_actuators = np.copy(flat_actuators)
                     best_error = np.copy(current_error)
+                    self.send(best_flat_actuators)
             elif current_error > best_error:
                 self._logger.info("Wavefront error worse than before")
+                self.send(best_flat_actuators)
             else:
                 self._logger.info("No improvement in Wavefront error")
+                self.send(best_flat_actuators)
             ii += 1
         self.send(best_flat_actuators)
         return best_flat_actuators
