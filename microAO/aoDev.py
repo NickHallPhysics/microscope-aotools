@@ -804,7 +804,7 @@ class AdaptiveOpticsDevice(Device):
                     best_flat_actuators = np.copy(flat_actuators)
                     best_z_amps_corrected = np.copy(z_amps)
                     best_error = np.copy(corrected_error)
-            elif corrected_error < best_error:
+            elif best_error < corrected_error:
                 _logger.info("Wavefront error worse than before")
             else:
                 _logger.info("No improvement in Wavefront error")
