@@ -19,6 +19,8 @@
 ## along with microAO.  If not, see <http://www.gnu.org/licenses/>.
 
 # Import required packs
+import functools
+
 import numpy as np
 import Pyro4
 import time
@@ -28,9 +30,9 @@ from microAO.aoAlg import AdaptiveOpticsFunctions
 # Should fix this with multiple inheritance for this class!
 aoAlg = AdaptiveOpticsFunctions()
 
-from microscope.devices import Device
-from microscope.devices import TriggerType
-from microscope.devices import TriggerMode
+from microscope.abc import Device
+from microscope import TriggerType
+from microscope import TriggerMode
 
 import logging
 
@@ -41,6 +43,26 @@ unwrap_method = {
 _logger = logging.getLogger(__name__)
 
 wavefront_error_modes = ["RMS","Strehl"]
+
+
+def _with_wavefront_camera_ttype_software(func):
+    """Method decorator to set camera with software trigger type."""
+    @functools.wraps(func)
+    def wrapper(self, *args, **kwargs):
+        ttype = self.wavefront_camera.trigger_type
+        tmode = self.wavefront_camera.trigger_mode
+
+        ttype_needs_change = ttype is not TriggerType.SOFTWARE
+        try:
+            if ttype_needs_change:
+                self.wavefront_camera.set_trigger(TriggerType.SOFTWARE, tmode)
+            return_value = func(self, *args, **kwargs)
+        finally:
+            if ttype_needs_change:
+                self.wavefront_camera.set_trigger(ttype, tmode)
+        return return_value
+    return wrapper
+
 
 class AdaptiveOpticsDevice(Device):
     """Class for the adaptive optics device
@@ -408,15 +430,26 @@ class AdaptiveOpticsDevice(Device):
         return self.mask
 
     @Pyro4.expose
+    @_with_wavefront_camera_ttype_software
     def acquire_raw(self):
-        self.acquiring = True
-        while self.acquiring == True:
+        """This method changes trigger type to software.  If something is
+        planning on calling this method multiple times in a row it
+        should ensure that it sets software trigger type itself
+        otherwise the enable/disable cycle that it involves will take
+        a lot of time.
+        """
+        # FIXME: this can loop forever if the camera keeps timing out.
+        # It's unlikely that this is the right thing to do.
+        while True:
             try:
-                data_raw, timestamp = self.wavefront_camera.grab_next_data()
-                self.acquiring = False
+                data_raw, _ = self.wavefront_camera.grab_next_data()
+                break
             except Exception as e:
-                if str(e) == str("ERROR 10: Timeout"):
-                    _logger.info("Recieved Timeout error from camera. Waiting to try again...")
+                # FIXME: this only catches the error from Ximea
+                # cameras (I'm not sure it still does).  We should not
+                # be trying to handle hardware specific exceptions.
+                if str(e) == "ERROR 10: Timeout":
+                    _logger.info("Received Timeout error from camera. Waiting to try again...")
                     time.sleep(1)
                 else:
                     _logger.info(type(e))
@@ -426,19 +459,7 @@ class AdaptiveOpticsDevice(Device):
 
     @Pyro4.expose
     def acquire(self):
-        self.acquiring = True
-        while self.acquiring == True:
-            try:
-                data_raw, timestamp = self.wavefront_camera.grab_next_data()
-                self.acquiring = False
-            except Exception as e:
-                if str(e) == str("ERROR 10: Timeout"):
-                    _logger.info("Recieved Timeout error from camera. Waiting to try again...")
-                    time.sleep(1)
-                else:
-                    _logger.info(type(e))
-                    _logger.info("Error is: %s" % (e))
-                    raise e
+        data_raw = self.acquire_raw()
         if np.any(self.roi) is None:
             data = data_raw
         else:
@@ -623,6 +644,7 @@ class AdaptiveOpticsDevice(Device):
         return strehl_ratio
 
     @Pyro4.expose
+    @_with_wavefront_camera_ttype_software
     def calibrate(self, numPokeSteps=5, noZernikeModes=69, threshold=0.005):
         self.wavefront_camera.set_exposure_time(0.1)
         # Ensure an ROI is defined so a masked image is obtained
@@ -722,6 +744,7 @@ class AdaptiveOpticsDevice(Device):
     # This method of wavefront flattening should be used when the wavefront sensor defined in __init__ is being used to
     # directly measure the phase wavefront.
     @Pyro4.expose
+    @_with_wavefront_camera_ttype_software
     def flatten_phase(self, iterations=1, error_thresh=np.inf, z_modes_ignore=None):
         # Ensure an ROI is defined so a masked image is obtained
         try:
@@ -828,6 +851,7 @@ class AdaptiveOpticsDevice(Device):
         return actuator_pos
 
     @Pyro4.expose
+    @_with_wavefront_camera_ttype_software
     def assess_character(self, modes_tba=None):
         # Ensure the conditions for phase unwrapping are in satisfied
         self.check_unwrap_conditions()
