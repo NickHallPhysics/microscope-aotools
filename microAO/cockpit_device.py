@@ -58,12 +58,12 @@ def _np_grey_img_to_wx_image(np_img: np.ndarray) -> wx.Image:
     scaled_img = (np_img - img_min) / (img_max - img_min)
 
     uint8_img = (scaled_img * 255).astype("uint8")
-    scaled_img_rgb = np.require(
-        np.stack((uint8_img,) * 3, axis=-1), requirements="C"
-    )
+    scaled_img_rgb = np.require(np.stack((uint8_img,) * 3, axis=-1), requirements="C")
 
     wx_img = wx.Image(
-        scaled_img_rgb.shape[0], scaled_img_rgb.shape[1], scaled_img_rgb,
+        scaled_img_rgb.shape[0],
+        scaled_img_rgb.shape[1],
+        scaled_img_rgb,
     )
     return wx_img
 
@@ -94,9 +94,7 @@ def _bin_ndarray(ndarray, new_shape):
 
     """
     if ndarray.ndim != len(new_shape):
-        raise ValueError(
-            "Shape mismatch: {} -> {}".format(ndarray.shape, new_shape)
-        )
+        raise ValueError("Shape mismatch: {} -> {}".format(ndarray.shape, new_shape))
     compression_pairs = [(d, c // d) for d, c in zip(new_shape, ndarray.shape)]
     flattened = [l for p in compression_pairs for l in p]
     ndarray = ndarray.reshape(flattened)
@@ -248,9 +246,7 @@ class _PhaseViewer(wx.Frame):
         wx_img_fourier = _np_grey_img_to_wx_image(image_ft)
 
         self._canvas = FloatCanvas(self._panel, size=wx_img_real.GetSize())
-        self._real_bmp = self._canvas.AddBitmap(
-            wx_img_real, (0, 0), Position="cc"
-        )
+        self._real_bmp = self._canvas.AddBitmap(wx_img_real, (0, 0), Position="cc")
         self._fourier_bmp = self._canvas.AddBitmap(
             wx_img_fourier, (0, 0), Position="cc"
         )
@@ -310,10 +306,7 @@ class _CharacterisationAssayViewer(wx.Frame):
 
         info_txt = wx.StaticText(
             root_panel,
-            label=(
-                "Mean Zernike reconstruction accuracy: %0.5f"
-                % np.mean(assay_diag)
-            ),
+            label=("Mean Zernike reconstruction accuracy: %0.5f" % np.mean(assay_diag)),
         )
 
         panel_sizer = wx.BoxSizer(wx.VERTICAL)
@@ -335,27 +328,29 @@ def log_correction_applied(
 ):
     # Save full stack of images used
     _np_save_with_timestamp(
-        np.asarray(correction_stack), "sensorless_AO_correction_stack",
+        np.asarray(correction_stack),
+        "sensorless_AO_correction_stack",
     )
 
     _np_save_with_timestamp(
-        zernike_applied, "sensorless_AO_zernike_applied",
+        zernike_applied,
+        "sensorless_AO_zernike_applied",
     )
 
     _np_save_with_timestamp(nollZernike, "sensorless_AO_nollZernike")
     _np_save_with_timestamp(
-        sensorless_correct_coef, "sensorless_correct_coef",
+        sensorless_correct_coef,
+        "sensorless_correct_coef",
     )
 
     _np_save_with_timestamp(actuator_offset, "ac_pos_sensorless")
 
     ao_log_filepath = os.path.join(
-        wx.GetApp().Config["log"].getpath("dir"), "sensorless_AO_logger.txt",
+        wx.GetApp().Config["log"].getpath("dir"),
+        "sensorless_AO_logger.txt",
     )
     with open(ao_log_filepath, "a+") as fh:
-        fh.write(
-            "Time stamp: %s\n" % time.strftime("%Y/%m/%d %H:%M", time.gmtime())
-        )
+        fh.write("Time stamp: %s\n" % time.strftime("%Y/%m/%d %H:%M", time.gmtime()))
         fh.write("Aberrations measured: %s\n" % (sensorless_correct_coef))
         fh.write("Actuator positions applied: %s\n" % (str(actuator_offset)))
 
@@ -412,9 +407,7 @@ class MicroscopeAOCompositeDevicePanel(wx.Panel):
         self.Bind(wx.EVT_CONTEXT_MENU, self.OnContextMenu)
 
         self._menu_item_id_to_metric: typing.Dict[int, str] = {}
-        self._menu_item_id_to_callback: typing.Dict[
-            int, typing.Callable[[], None]
-        ] = {}
+        self._menu_item_id_to_callback: typing.Dict[int, typing.Callable[[], None]] = {}
 
         self._context_menu = wx.Menu()
 
@@ -494,7 +487,9 @@ class MicroscopeAOCompositeDevicePanel(wx.Panel):
             img = _bin_ndarray(image_raw, new_shape=(resize_dim, resize_dim))
             img = np.require(img, requirements="C")
 
-            last_roi = userConfig.getValue("dm_circleParams",)
+            last_roi = userConfig.getValue(
+                "dm_circleParams",
+            )
             # We need to check if getValue() returns None, instead of
             # passing a default value to getValue().  The reason is
             # that if there is no ROI at the start, by the time we get
@@ -533,13 +528,9 @@ class MicroscopeAOCompositeDevicePanel(wx.Panel):
         power_spectrum = _computePowerSpectrum(interferogram)
         unwrapped_phase_mptt = _computeUnwrappedPhaseMPTT(unwrapped_phase)
 
-        unwrapped_RMS_error = self._device.wavefrontRMSError(
-            unwrapped_phase_mptt
-        )
+        unwrapped_RMS_error = self._device.wavefrontRMSError(unwrapped_phase_mptt)
 
-        frame = _PhaseViewer(
-            self, unwrapped_phase, power_spectrum, unwrapped_RMS_error
-        )
+        frame = _PhaseViewer(self, unwrapped_phase, power_spectrum, unwrapped_RMS_error)
         frame.Show()
 
     def OnCalibrate(self, event: wx.CommandEvent) -> None:
@@ -582,9 +573,7 @@ class MicroscopeAOCompositeDevicePanel(wx.Panel):
 
         cameras = depot.getActiveCameras()
         if not cameras:
-            wx.MessageBox(
-                "There are no cameras enabled.", caption="No cameras active"
-            )
+            wx.MessageBox("There are no cameras enabled.", caption="No cameras active")
         elif len(cameras) == 1:
             action(cameras[0])
         else:
@@ -592,8 +581,7 @@ class MicroscopeAOCompositeDevicePanel(wx.Panel):
             for camera in cameras:
                 menu_item = menu.Append(
                     wx.ID_ANY,
-                    "Perform sensorless AO with %s camera"
-                    % camera.descriptiveName,
+                    "Perform sensorless AO with %s camera" % camera.descriptiveName,
                 )
                 self.Bind(
                     wx.EVT_MENU,
@@ -670,9 +658,7 @@ class MicroscopeAOCompositeDevice(cockpit.devices.device.Device):
         # Need initial values for system flat calculations
         self.sys_flat_num_it = 10
         self.sys_error_thresh = np.inf
-        self.sysFlatNollZernike = np.linspace(
-            start=4, stop=68, num=65, dtype=int
-        )
+        self.sysFlatNollZernike = np.linspace(start=4, stop=68, num=65, dtype=int)
 
         # Need intial values for sensorless AO
         self.numMes = 9
@@ -755,9 +741,7 @@ class MicroscopeAOCompositeDevice(cockpit.devices.device.Device):
             self.proxy.get_controlMatrix()
         except Exception as e:
             try:
-                controlMatrix = np.asarray(
-                    userConfig.getValue("dm_controlMatrix")
-                )
+                controlMatrix = np.asarray(userConfig.getValue("dm_controlMatrix"))
                 self.proxy.set_controlMatrix(controlMatrix)
             except Exception:
                 raise e
@@ -767,9 +751,7 @@ class MicroscopeAOCompositeDevice(cockpit.devices.device.Device):
         self.checkFourierFilter()
 
         controlMatrix = self.proxy.calibrate(numPokeSteps=5)
-        userConfig.setValue(
-            "dm_controlMatrix", np.ndarray.tolist(controlMatrix)
-        )
+        userConfig.setValue("dm_controlMatrix", np.ndarray.tolist(controlMatrix))
 
     def characterise(self):
         self.updateROI()
@@ -781,9 +763,7 @@ class MicroscopeAOCompositeDevice(cockpit.devices.device.Device):
             controlMatrix = self.proxy.get_controlMatrix()
             self.proxy.set_controlMatrix((-1 * controlMatrix))
             assay = assay * -1
-            userConfig.setValue(
-                "dm_controlMatrix", np.ndarray.tolist(controlMatrix)
-            )
+            userConfig.setValue("dm_controlMatrix", np.ndarray.tolist(controlMatrix))
 
         # The default system corrections should be for the zernike
         # modes we can accurately recreate.
@@ -881,9 +861,7 @@ class MicroscopeAOCompositeDevice(cockpit.devices.device.Device):
             self.correction_stack.append(np.ndarray.tolist(image))
             wx.CallAfter(self.correctSensorlessProcessing)
         else:
-            logger.log.error(
-                "Failed to unsubscribe to camera events. Trying again."
-            )
+            logger.log.error("Failed to unsubscribe to camera events. Trying again.")
             events.unsubscribe(
                 events.NEW_IMAGE % self.camera.name,
                 self.correctSensorlessImage,
@@ -895,10 +873,7 @@ class MicroscopeAOCompositeDevice(cockpit.devices.device.Device):
         # Find aberration amplitudes and correct
         ind = int(len(self.correction_stack) / self.numMes)
         nollInd = (
-            np.where(self.zernike_applied[len(self.correction_stack) - 1, :])[
-                0
-            ][0]
-            + 1
+            np.where(self.zernike_applied[len(self.correction_stack) - 1, :])[0][0] + 1
         )
         logger.log.debug("Current Noll index being corrected: %i" % nollInd)
         current_stack = np.asarray(self.correction_stack)[
@@ -918,9 +893,7 @@ class MicroscopeAOCompositeDevice(cockpit.devices.device.Device):
         )
         self.actuator_offset = ac_pos_correcting
         self.sensorless_correct_coef[nollInd - 1] += amp_to_correct
-        logger.log.debug(
-            "Aberrations measured: ", self.sensorless_correct_coef
-        )
+        logger.log.debug("Aberrations measured: ", self.sensorless_correct_coef)
         logger.log.debug("Actuator positions applied: ", self.actuator_offset)
 
     def correctSensorlessProcessing(self):
@@ -937,9 +910,7 @@ class MicroscopeAOCompositeDevice(cockpit.devices.device.Device):
 
         else:
             # Once all images have been obtained, unsubscribe
-            logger.log.debug(
-                "Unsubscribing to camera %s events" % self.camera.name
-            )
+            logger.log.debug("Unsubscribing to camera %s events" % self.camera.name)
             events.unsubscribe(
                 events.NEW_IMAGE % self.camera.name,
                 self.correctSensorlessImage,
@@ -955,9 +926,7 @@ class MicroscopeAOCompositeDevice(cockpit.devices.device.Device):
                 self.actuator_offset,
             )
 
-            logger.log.debug(
-                "Actuator positions applied: %s", self.actuator_offset
-            )
+            logger.log.debug("Actuator positions applied: %s", self.actuator_offset)
             self.proxy.send(self.actuator_offset)
 
         # Take image, but ensure it's called after the phase is applied
