@@ -4,7 +4,8 @@
 ## Copyright (C) 2021 David Miguel Susano Pinto <david.pinto@bioch.ox.ac.uk>
 ## Copyright (C) 2019 Ian Dobbie <ian.dobbie@bioch.ox.ac.uk>
 ## Copyright (C) 2019 Mick Phillips <mick.phillips@gmail.com>
-## Copyright (C) 2019 Nick Hall <nicholas.hall@dtc.ox.ac.uk>
+## Copyright (C) 2019 Nick Hall <nicholas.hall@strath.ac.uk>
+## Copyright (C) 2020 Archie Morrison <archie.morrison.2018@uni.strath.ac.uk>
 ##
 ## This file is part of Cockpit.
 ##
@@ -433,6 +434,7 @@ class MicroscopeAOCompositeDevicePanel(wx.Panel):
                 self.SetSystemFlatCalculationParameters,
             ),
             ("Set Sensorless Parameters", self.SetSensorlessParameters),
+            ("Set Sensorless Parameters (Simplex)", self.SetSensorlessParametersSimplex),
         ]:
             menu_item = self._context_menu.Append(wx.ID_ANY, label)
             self._menu_item_id_to_callback[menu_item.GetId()] = callback
@@ -644,6 +646,27 @@ class MicroscopeAOCompositeDevicePanel(wx.Panel):
             [int(z_ind) for z_ind in inputs[4][1:-1].split(", ")]
         )
 
+    def SetSensorlessParametersSimplex(self) -> None:
+        inputs = cockpit.gui.dialogs.getNumberDialog.getManyNumbersFromUser(
+            self,
+            "Set sensorless AO parameters (Simplex)",
+            [
+                "Number of measurements",
+                "Tolerance",
+                "Noll indeces",
+            ],
+            (
+                self._device.numMesSimplex,
+                self._device.toleranceSimplex,
+                self._device.nollZernikeSimplex.tolist(),
+            ),
+        )
+        self._device.numMesSimplex = int(inputs[0])
+        self._device.toleranceSimplex = float(inputs[1])
+        self._device.nollZernikeSimplex = np.asarray(
+            [int(z_ind) for z_ind in inputs[2][1:-1].split(", ")]
+        )
+
 
 class MicroscopeAOCompositeDevice(cockpit.devices.device.Device):
     def __init__(self, name: str, config={}) -> None:
@@ -666,6 +689,11 @@ class MicroscopeAOCompositeDevice(cockpit.devices.device.Device):
         self.z_max = 1.5
         self.z_min = -1.5
         self.nollZernike = np.asarray([11, 22, 5, 6, 7, 8, 9, 10])
+
+        # Need intial values for sensorless AO (using non-linear simplex solver)
+        self.numMesSimplex = self.numMes * self.num_it
+        self.toleranceSimplex = np.Inf
+        self.nollZernikeSimplex = np.asarray([11, 22, 5, 6, 7, 8, 9, 10])
 
         # Shared state for the new image callbacks during sensorless
         self.actuator_offset = None
