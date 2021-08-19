@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
-## Copyright (C) 2018 Nicholas Hall <nicholas.hall@dtc.ox.ac.uk>
+## Copyright (C) 2018 Nicholas Hall <nicholas.hall@strath.ac.uk> 
 ##
 ## microAO is free software: you can redistribute it and/or modify
 ## it under the terms of the GNU General Public License as published by
