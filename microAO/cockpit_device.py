@@ -408,6 +408,10 @@ class MicroscopeAOCompositeDevicePanel(wx.Panel):
         sensorlessAOButton = wx.Button(self, label="Sensorless AO")
         sensorlessAOButton.Bind(wx.EVT_BUTTON, self.OnSensorlessAO)
 
+        # Button to perform sensorless correction using Nelder-Mead simplex
+        sensorlessAOSimplexButton = wx.Button(self, label="Sensorless AO simplex")
+        sensorlessAOSimplexButton.Bind(wx.EVT_BUTTON, self.OnSensorlessAOSimplex)
+
         # Right click button to select the metric and other
         # parameters.
         # FIXME: this is horrible UI with very low discoverability.
@@ -465,6 +469,7 @@ class MicroscopeAOCompositeDevicePanel(wx.Panel):
             applySysFlat,
             applyLastPatternButton,
             sensorlessAOButton,
+            sensorlessAOSimplexButton,
         ]:
             sizer.Add(btn, wx.SizerFlags(0).Expand())
         self.SetSizer(sizer)
@@ -582,6 +587,32 @@ class MicroscopeAOCompositeDevicePanel(wx.Panel):
         del event
 
         action = self._device.correctSensorlessSetup
+
+        cameras = depot.getActiveCameras()
+        if not cameras:
+            wx.MessageBox("There are no cameras enabled.", caption="No cameras active")
+        elif len(cameras) == 1:
+            action(cameras[0])
+        else:
+            menu = wx.Menu()
+            for camera in cameras:
+                menu_item = menu.Append(
+                    wx.ID_ANY,
+                    "Perform sensorless AO with %s camera" % camera.descriptiveName,
+                )
+                self.Bind(
+                    wx.EVT_MENU,
+                    lambda event, camera=camera: action(camera),
+                    menu_item,
+                )
+            cockpit.gui.guiUtils.placeMenuAtMouse(self, menu)
+
+    def OnSensorlessAOSimplex(self, event: wx.CommandEvent) -> None:
+        # Perform sensorless AO but if there is more than one camera
+        # available display a menu letting the user choose a camera.
+        del event
+
+        action = self._device.correctSensorlessSetupSimplex
 
         cameras = depot.getActiveCameras()
         if not cameras:
@@ -1049,6 +1080,9 @@ class MicroscopeAOCompositeDevice(cockpit.devices.device.Device):
         pixelSize = wx.GetApp().Objectives.GetPixelSize() * 10 ** -6
 
         if len(self.correction_stack) <= self.numMesSimplex:
+            # Here the metric is made negative since the Nelder-Mead method is a function minimisation algorithm.
+            # However, since the image quality metric is always positive and we are looking for a maxima, by forcing
+            # the image quality metric to be negative, we can used the Nelder-Mead solver.
             metric = -1 * self.proxy.measure_metric(
                 image_stack=self.correction_stack[-1, :, :],
                 wavelength=500 * 10 ** -9,
