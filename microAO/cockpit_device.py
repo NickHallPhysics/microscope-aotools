@@ -127,6 +127,11 @@ def _np_save_with_timestamp(data, basename_prefix):
     basename = basename_prefix + "_" + timestamp
     np.save(os.path.join(dirname, basename), data)
 
+def _centroid(N, simplex):
+    C = np.delete(simplex, -1, axis=1)
+    C = np.delete(C, -1, axis=0)
+    C = C.sum(axis=0) / N
+    return C
 
 class _ROISelect(wx.Frame):
     """Display a window that allows the user to select a circular area.
@@ -693,6 +698,7 @@ class MicroscopeAOCompositeDevice(cockpit.devices.device.Device):
         # Need intial values for sensorless AO (using non-linear simplex solver)
         self.numMesSimplex = self.numMes * self.num_it
         self.toleranceSimplex = np.Inf
+        self.z_amp_init = 0.5
         self.nollZernikeSimplex = np.asarray([11, 22, 5, 6, 7, 8, 9, 10])
 
         # Shared state for the new image callbacks during sensorless
@@ -956,6 +962,251 @@ class MicroscopeAOCompositeDevice(cockpit.devices.device.Device):
 
             logger.log.debug("Actuator positions applied: %s", self.actuator_offset)
             self.proxy.send(self.actuator_offset)
+
+        # Take image, but ensure it's called after the phase is applied
+        time.sleep(0.1)
+        wx.CallAfter(wx.GetApp().Imager.takeImage)
+
+    def correctSensorlessSetupSimplex(self, camera):
+        logger.log.info("Performing sensorless AO setup")
+        # Note: Default is to correct Primary and Secondary Spherical
+        # aberration and both orientations of coma, astigmatism and
+        # trefoil.
+
+        self.checkIfCalibrated()
+
+        # Shared state for the new image callbacks during sensorless
+        self.actuator_offset = None
+        self.camera = camera
+        self.correction_stack_simplex = []  # list of corrected images
+        self.zernike_applied_simplex = [] #list of all zernike amplitudes applied
+        self.alpha = 1
+        self.gamma = 2
+        self.beta = 0.5
+        self.simplex_replace_count = 1
+        self.last_process = "none"
+        self.process = "reflection" #flag for the current Nelder-Mead solver process
+
+        logger.log.debug("Subscribing to camera events")
+        # Subscribe to camera events
+        events.subscribe(
+            events.NEW_IMAGE % self.camera.name, self.correctSensorlessImageSimplex
+        )
+
+        self.N = np.shape(self.nollZernikeSimplex)[0]
+        self.simplex = np.zeros((self.N + 1, self.N + 1))
+
+        for i in range(1, self.N + 1):
+            u = np.zeros(self.N)
+            u[i - 1] = self.z_amp_init
+            self.simplex[i, 0:self.N] = self.simplex[0, :-1] + u
+
+        zernike_amps = self.simplex[len(self.correction_stack_simplex), :-1]
+        zernike_applied = np.zeros(self.no_actuators)
+        for jj in range(len(self.nollZernikeSimplex)):
+            zernike_applied[self.nollZernikeSimplex[jj]-1] = zernike_amps[jj]
+
+        self.zernike_applied_simplex.append(zernike_applied.tolist())
+
+
+        logger.log.info("Applying the first Zernike mode")
+        # Apply the first Zernike mode
+        logger.log.debug(self.zernike_applied_simplex[len(self.correction_stack), :])
+        self.proxy.set_phase(
+            np.asarray(self.zernike_applied_simplex[len(self.correction_stack)]),
+            offset=self.actuator_offset,
+        )
+
+        # Take image. This will trigger the iterative sensorless AO correction
+        wx.CallAfter(wx.GetApp().Imager.takeImage)
+
+    def correctSensorlessImageSimplex(self, image, timestamp):
+        del timestamp
+        if len(self.correction_stack) <= self.numMesSimplex:
+            logger.log.info(
+                "Correction image %i/%i"
+                % (
+                    len(self.correction_stack) + 1,
+                    self.numMesSimplex,
+                )
+            )
+            # Store image for current applied phase
+            self.correction_stack.append(np.ndarray.tolist(image))
+            wx.CallAfter(self.correctSensorlessProcessingSimplex)
+        else:
+            logger.log.error("Failed to unsubscribe to camera events. Trying again.")
+            events.unsubscribe(
+                events.NEW_IMAGE % self.camera.name,
+                self.correctSensorlessImageSimplex,
+            )
+
+    def correctSensorlessProcessingSimplex(self):
+        logger.log.info("Processing sensorless image")
+        pixelSize = wx.GetApp().Objectives.GetPixelSize() * 10 ** -6
+
+        if len(self.correction_stack) <= self.numMesSimplex:
+            metric = -1 * self.proxy.measure_metric(image_stack=self.correction_stack[-1, :, :],
+                                               wavelength=500 * 10 ** -9, NA=1.1, pixel_size=pixelSize)
+
+            if self.last_process and self.process == "reflection":
+                self.reflection_metric = metric
+                if self.reflection_metric < self.simplex[0, self.N]:
+                    self.process = "expansion"
+                elif self.reflection_metric >= self.simplex[self.N - 1, self.N]:
+                    if self.reflection_metric < self.simplex[self.N, self.N]:
+                        self.process = "replace reflection"
+                    else:
+                        self.process = "contraction"
+                else:
+                    self.process = "replace reflection"
+
+            elif self.last_process and self.process == "expansion":
+                self.expansion_metric = metric
+                if self.expansion_metric < self.simplex[0, self.N]:
+                    self.process = "replace expansion"
+                else:
+                    self.process = "replace reflection"
+
+            elif self.last_process and self.process == "contraction":
+                self.contraction_metric = metric
+                if self.contraction_metric < self.simplex[self.N, self.N]:
+                    self.process = "replace contraction"
+                else:
+                    if self.simplex_replace_count == self.N:
+                        self.simplex_replace_count = 1
+                        self.process = "reflection"
+                    else:
+                        self.process = "replace all but best"
+
+            # If we haven't populated the image quality metrics for the intial simplex positions then do this
+            if len(self.correction_stack) < len(self.nollZernikeSimplex)+1:
+                self.simplex[len(self.correction_stack)-1,-1] = metric
+
+                zernike_amps = self.simplex[len(self.correction_stack_simplex), :-1]
+                zernike_applied = np.zeros(self.no_actuators)
+                for jj in range(len(self.nollZernikeSimplex)):
+                    zernike_applied[self.nollZernikeSimplex[jj]-1] = zernike_amps[jj]
+
+                self.zernike_applied_simplex.append(zernike_applied.tolist())
+            # If the initial simplex is already populated, then start Nelder-Mead solver
+            else:
+                if self.process == "reflection":
+                    self.simplex = sorted(self.simplex, key=lambda a_entry: a_entry[self.N])
+                    self.simplex = np.resize(self.simplex, (self.N + 1, self.N + 1))
+
+                    self.C = _centroid(self.N, self.simplex)
+
+                    self.worst = self.simplex[self.N, 0:self.N]
+
+                    reflection_amps = self.C + self.alpha * (self.C - self.worst)
+                    zernike_applied = np.zeros(self.no_actuators)
+
+                    for jj in range(len(self.nollZernikeSimplex)):
+                        zernike_applied[self.nollZernikeSimplex[jj] - 1] = reflection_amps[jj]
+
+                    self.zernike_applied_simplex.append(zernike_applied.tolist())
+
+                    self.last_process = "reflection"
+                elif self.process == "expansion":
+                    reflection_amps = self.C + self.alpha * (self.C - self.worst)
+                    expansion_amps = self.C + self.gamma * (reflection_amps - self.C)
+
+                    zernike_applied = np.zeros(self.no_actuators)
+
+                    for jj in range(len(self.nollZernikeSimplex)):
+                        zernike_applied[self.nollZernikeSimplex[jj] - 1] = expansion_amps[jj]
+
+                    self.zernike_applied_simplex.append(zernike_applied.tolist())
+
+                    self.last_process = "expansion"
+                elif self.process == "contraction":
+                    contraction_amps = self.C + self.beta * (self.worst - self.C)
+
+                    zernike_applied = np.zeros(self.no_actuators)
+
+                    for jj in range(len(self.nollZernikeSimplex)):
+                        zernike_applied[self.nollZernikeSimplex[jj] - 1] = contraction_amps[jj]
+
+                    self.zernike_applied_simplex.append(zernike_applied.tolist())
+
+                    self.last_process = "contraction"
+                elif self.process == "replace reflection":
+                    last_applied_zernike = np.asarray(self.zernike_applied_simplex[-1])
+
+                    for ii in range(self.nollZernikeSimplex.shape[0]):
+                        self.simplex[self.N,ii] = last_applied_zernike[self.nollZernikeSimplex[ii]-1]
+                    self.simplex[self.N, self.N] = self.reflection_metric
+
+                    self.process = "reflection"
+                elif self.process == "replace expansion":
+                    last_applied_zernike = np.asarray(self.zernike_applied_simplex[-1])
+
+                    for ii in range(self.nollZernikeSimplex.shape[0]):
+                        self.simplex[self.N,ii] = last_applied_zernike[self.nollZernikeSimplex[ii]-1]
+                    self.simplex[self.N, self.N] = self.expansion_metric
+
+                    self.process = "reflection"
+                elif self.process == "replace contraction":
+                    last_applied_zernike = np.asarray(self.zernike_applied_simplex[-1])
+
+                    for ii in range(self.nollZernikeSimplex.shape[0]):
+                        self.simplex[self.N,ii] = last_applied_zernike[self.nollZernikeSimplex[ii]-1]
+                    self.simplex[self.N, self.N] = self.contraction_metric
+
+                    self.process = "reflection"
+                else:
+                    if self.simplex_replace_count < self.N:
+                        for i in range(self.N):
+                            self.simplex[self.simplex_replace_count, i] = (self.simplex[self.simplex_replace_count, i]
+                                                                           + self.simplex[0, i]) / 2
+
+                        replace_amps = self.simplex[self.simplex_replace_count, 0:self.N]
+                        zernike_applied = np.zeros(self.no_actuators)
+
+                        for jj in range(len(self.nollZernikeSimplex)):
+                            zernike_applied[self.nollZernikeSimplex[jj] - 1] = replace_amps[jj]
+
+                        self.zernike_applied_simplex.append(zernike_applied.tolist())
+                        self.simplex_replace_count += 1
+
+            # Advance counter by 1 and apply next phase
+            self.proxy.set_phase(
+                np.asarray(self.zernike_applied_simplex[len(self.correction_stack)]),
+                offset=self.actuator_offset,
+            )
+        else:
+            # Once all images have been obtained, unsubscribe
+            logger.log.debug("Unsubscribing to camera %s events" % self.camera.name)
+            events.unsubscribe(
+                events.NEW_IMAGE % self.camera.name,
+                self.correctSensorlessImage,
+            )
+
+            self.simplex = sorted(self.simplex, key=lambda a_entry: a_entry[self.N])
+            self.simplex = np.resize(self.simplex, (self.N + 1, self.N + 1))
+
+            self.sensorless_correct_coef = self.simplex[self.N, 0:self.N]
+            zernike_applied = np.zeros(self.no_actuators)
+
+            for jj in range(len(self.nollZernikeSimplex)):
+                zernike_applied[self.nollZernikeSimplex[jj] - 1] = self.sensorless_correct_coef[jj]
+
+            self.zernike_applied_simplex.append(zernike_applied.tolist())
+
+            self.actuator_offset = self.proxy.set_phase(self.sensorless_correct_coef, offset=self.actuator_offset)
+
+            logger.log.debug("Zernike amplitude applied: %s", self.zernike_applied_simplex)
+            logger.log.debug("Actuator positions applied: %s", self.actuator_offset)
+
+            self.zernike_applied_simplex = np.asarray(self.zernike_applied_simplex)
+
+            log_correction_applied(
+                self.correction_stack,
+                self.zernike_applied_simplex,
+                self.nollZernikeSimplex,
+                self.sensorless_correct_coef,
+                self.actuator_offset,
+            )
 
         # Take image, but ensure it's called after the phase is applied
         time.sleep(0.1)
