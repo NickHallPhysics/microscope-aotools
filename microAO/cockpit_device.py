@@ -127,11 +127,13 @@ def _np_save_with_timestamp(data, basename_prefix):
     basename = basename_prefix + "_" + timestamp
     np.save(os.path.join(dirname, basename), data)
 
+
 def _centroid(N, simplex):
     C = np.delete(simplex, -1, axis=1)
     C = np.delete(C, -1, axis=0)
     C = C.sum(axis=0) / N
     return C
+
 
 class _ROISelect(wx.Frame):
     """Display a window that allows the user to select a circular area.
@@ -439,7 +441,10 @@ class MicroscopeAOCompositeDevicePanel(wx.Panel):
                 self.SetSystemFlatCalculationParameters,
             ),
             ("Set Sensorless Parameters", self.SetSensorlessParameters),
-            ("Set Sensorless Parameters (Simplex)", self.SetSensorlessParametersSimplex),
+            (
+                "Set Sensorless Parameters (Simplex)",
+                self.SetSensorlessParametersSimplex,
+            ),
         ]:
             menu_item = self._context_menu.Append(wx.ID_ANY, label)
             self._menu_item_id_to_callback[menu_item.GetId()] = callback
@@ -979,13 +984,13 @@ class MicroscopeAOCompositeDevice(cockpit.devices.device.Device):
         self.actuator_offset = None
         self.camera = camera
         self.correction_stack_simplex = []  # list of corrected images
-        self.zernike_applied_simplex = [] #list of all zernike amplitudes applied
+        self.zernike_applied_simplex = []  # list of all zernike amplitudes applied
         self.alpha = 1
         self.gamma = 2
         self.beta = 0.5
         self.simplex_replace_count = 1
         self.last_process = "none"
-        self.process = "reflection" #flag for the current Nelder-Mead solver process
+        self.process = "reflection"  # flag for the current Nelder-Mead solver process
 
         logger.log.debug("Subscribing to camera events")
         # Subscribe to camera events
@@ -999,15 +1004,14 @@ class MicroscopeAOCompositeDevice(cockpit.devices.device.Device):
         for i in range(1, self.N + 1):
             u = np.zeros(self.N)
             u[i - 1] = self.z_amp_init
-            self.simplex[i, 0:self.N] = self.simplex[0, :-1] + u
+            self.simplex[i, 0 : self.N] = self.simplex[0, :-1] + u
 
         zernike_amps = self.simplex[len(self.correction_stack_simplex), :-1]
         zernike_applied = np.zeros(self.no_actuators)
         for jj in range(len(self.nollZernikeSimplex)):
-            zernike_applied[self.nollZernikeSimplex[jj]-1] = zernike_amps[jj]
+            zernike_applied[self.nollZernikeSimplex[jj] - 1] = zernike_amps[jj]
 
         self.zernike_applied_simplex.append(zernike_applied.tolist())
-
 
         logger.log.info("Applying the first Zernike mode")
         # Apply the first Zernike mode
@@ -1045,8 +1049,12 @@ class MicroscopeAOCompositeDevice(cockpit.devices.device.Device):
         pixelSize = wx.GetApp().Objectives.GetPixelSize() * 10 ** -6
 
         if len(self.correction_stack) <= self.numMesSimplex:
-            metric = -1 * self.proxy.measure_metric(image_stack=self.correction_stack[-1, :, :],
-                                               wavelength=500 * 10 ** -9, NA=1.1, pixel_size=pixelSize)
+            metric = -1 * self.proxy.measure_metric(
+                image_stack=self.correction_stack[-1, :, :],
+                wavelength=500 * 10 ** -9,
+                NA=1.1,
+                pixel_size=pixelSize,
+            )
 
             if self.last_process and self.process == "reflection":
                 self.reflection_metric = metric
@@ -1079,30 +1087,34 @@ class MicroscopeAOCompositeDevice(cockpit.devices.device.Device):
                         self.process = "replace all but best"
 
             # If we haven't populated the image quality metrics for the intial simplex positions then do this
-            if len(self.correction_stack) < len(self.nollZernikeSimplex)+1:
-                self.simplex[len(self.correction_stack)-1,-1] = metric
+            if len(self.correction_stack) < len(self.nollZernikeSimplex) + 1:
+                self.simplex[len(self.correction_stack) - 1, -1] = metric
 
                 zernike_amps = self.simplex[len(self.correction_stack_simplex), :-1]
                 zernike_applied = np.zeros(self.no_actuators)
                 for jj in range(len(self.nollZernikeSimplex)):
-                    zernike_applied[self.nollZernikeSimplex[jj]-1] = zernike_amps[jj]
+                    zernike_applied[self.nollZernikeSimplex[jj] - 1] = zernike_amps[jj]
 
                 self.zernike_applied_simplex.append(zernike_applied.tolist())
             # If the initial simplex is already populated, then start Nelder-Mead solver
             else:
                 if self.process == "reflection":
-                    self.simplex = sorted(self.simplex, key=lambda a_entry: a_entry[self.N])
+                    self.simplex = sorted(
+                        self.simplex, key=lambda a_entry: a_entry[self.N]
+                    )
                     self.simplex = np.resize(self.simplex, (self.N + 1, self.N + 1))
 
                     self.C = _centroid(self.N, self.simplex)
 
-                    self.worst = self.simplex[self.N, 0:self.N]
+                    self.worst = self.simplex[self.N, 0 : self.N]
 
                     reflection_amps = self.C + self.alpha * (self.C - self.worst)
                     zernike_applied = np.zeros(self.no_actuators)
 
                     for jj in range(len(self.nollZernikeSimplex)):
-                        zernike_applied[self.nollZernikeSimplex[jj] - 1] = reflection_amps[jj]
+                        zernike_applied[
+                            self.nollZernikeSimplex[jj] - 1
+                        ] = reflection_amps[jj]
 
                     self.zernike_applied_simplex.append(zernike_applied.tolist())
 
@@ -1114,7 +1126,9 @@ class MicroscopeAOCompositeDevice(cockpit.devices.device.Device):
                     zernike_applied = np.zeros(self.no_actuators)
 
                     for jj in range(len(self.nollZernikeSimplex)):
-                        zernike_applied[self.nollZernikeSimplex[jj] - 1] = expansion_amps[jj]
+                        zernike_applied[
+                            self.nollZernikeSimplex[jj] - 1
+                        ] = expansion_amps[jj]
 
                     self.zernike_applied_simplex.append(zernike_applied.tolist())
 
@@ -1125,7 +1139,9 @@ class MicroscopeAOCompositeDevice(cockpit.devices.device.Device):
                     zernike_applied = np.zeros(self.no_actuators)
 
                     for jj in range(len(self.nollZernikeSimplex)):
-                        zernike_applied[self.nollZernikeSimplex[jj] - 1] = contraction_amps[jj]
+                        zernike_applied[
+                            self.nollZernikeSimplex[jj] - 1
+                        ] = contraction_amps[jj]
 
                     self.zernike_applied_simplex.append(zernike_applied.tolist())
 
@@ -1134,7 +1150,9 @@ class MicroscopeAOCompositeDevice(cockpit.devices.device.Device):
                     last_applied_zernike = np.asarray(self.zernike_applied_simplex[-1])
 
                     for ii in range(self.nollZernikeSimplex.shape[0]):
-                        self.simplex[self.N,ii] = last_applied_zernike[self.nollZernikeSimplex[ii]-1]
+                        self.simplex[self.N, ii] = last_applied_zernike[
+                            self.nollZernikeSimplex[ii] - 1
+                        ]
                     self.simplex[self.N, self.N] = self.reflection_metric
 
                     self.process = "reflection"
@@ -1142,7 +1160,9 @@ class MicroscopeAOCompositeDevice(cockpit.devices.device.Device):
                     last_applied_zernike = np.asarray(self.zernike_applied_simplex[-1])
 
                     for ii in range(self.nollZernikeSimplex.shape[0]):
-                        self.simplex[self.N,ii] = last_applied_zernike[self.nollZernikeSimplex[ii]-1]
+                        self.simplex[self.N, ii] = last_applied_zernike[
+                            self.nollZernikeSimplex[ii] - 1
+                        ]
                     self.simplex[self.N, self.N] = self.expansion_metric
 
                     self.process = "reflection"
@@ -1150,21 +1170,29 @@ class MicroscopeAOCompositeDevice(cockpit.devices.device.Device):
                     last_applied_zernike = np.asarray(self.zernike_applied_simplex[-1])
 
                     for ii in range(self.nollZernikeSimplex.shape[0]):
-                        self.simplex[self.N,ii] = last_applied_zernike[self.nollZernikeSimplex[ii]-1]
+                        self.simplex[self.N, ii] = last_applied_zernike[
+                            self.nollZernikeSimplex[ii] - 1
+                        ]
                     self.simplex[self.N, self.N] = self.contraction_metric
 
                     self.process = "reflection"
                 else:
                     if self.simplex_replace_count < self.N:
                         for i in range(self.N):
-                            self.simplex[self.simplex_replace_count, i] = (self.simplex[self.simplex_replace_count, i]
-                                                                           + self.simplex[0, i]) / 2
+                            self.simplex[self.simplex_replace_count, i] = (
+                                self.simplex[self.simplex_replace_count, i]
+                                + self.simplex[0, i]
+                            ) / 2
 
-                        replace_amps = self.simplex[self.simplex_replace_count, 0:self.N]
+                        replace_amps = self.simplex[
+                            self.simplex_replace_count, 0 : self.N
+                        ]
                         zernike_applied = np.zeros(self.no_actuators)
 
                         for jj in range(len(self.nollZernikeSimplex)):
-                            zernike_applied[self.nollZernikeSimplex[jj] - 1] = replace_amps[jj]
+                            zernike_applied[
+                                self.nollZernikeSimplex[jj] - 1
+                            ] = replace_amps[jj]
 
                         self.zernike_applied_simplex.append(zernike_applied.tolist())
                         self.simplex_replace_count += 1
@@ -1185,17 +1213,23 @@ class MicroscopeAOCompositeDevice(cockpit.devices.device.Device):
             self.simplex = sorted(self.simplex, key=lambda a_entry: a_entry[self.N])
             self.simplex = np.resize(self.simplex, (self.N + 1, self.N + 1))
 
-            self.sensorless_correct_coef = self.simplex[self.N, 0:self.N]
+            self.sensorless_correct_coef = self.simplex[self.N, 0 : self.N]
             zernike_applied = np.zeros(self.no_actuators)
 
             for jj in range(len(self.nollZernikeSimplex)):
-                zernike_applied[self.nollZernikeSimplex[jj] - 1] = self.sensorless_correct_coef[jj]
+                zernike_applied[
+                    self.nollZernikeSimplex[jj] - 1
+                ] = self.sensorless_correct_coef[jj]
 
             self.zernike_applied_simplex.append(zernike_applied.tolist())
 
-            self.actuator_offset = self.proxy.set_phase(self.sensorless_correct_coef, offset=self.actuator_offset)
+            self.actuator_offset = self.proxy.set_phase(
+                self.sensorless_correct_coef, offset=self.actuator_offset
+            )
 
-            logger.log.debug("Zernike amplitude applied: %s", self.zernike_applied_simplex)
+            logger.log.debug(
+                "Zernike amplitude applied: %s", self.zernike_applied_simplex
+            )
             logger.log.debug("Actuator positions applied: %s", self.actuator_offset)
 
             self.zernike_applied_simplex = np.asarray(self.zernike_applied_simplex)
